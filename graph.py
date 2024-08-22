@@ -42,7 +42,7 @@ As The Player explore the world and regain memory of the past, The Player will b
 
 The player awakes in a region of the world. The region is a {location}.
 
-Their most recent turn actions are contained within the "action" field below:"""
+Their most recent turn actions are contained within the "Human" response below:"""
 
 summary_prompt = """
 The Player has taken the following actions:
@@ -131,6 +131,14 @@ Getting an Answer from the Oracle
     With Light , the answer is " Yes, and... ".
     With Penumbra , the answer is " Yes, but... ".
     With Darkness , the answer is " No, and... ".
+"""
+
+result_prompt = """
+If the result is LIGHT -- it is a total success. If it is PENUMBRA -- it is a partial success. If it is DARKNESS -- it is a setback. Tailor the narration to match the result of the roll. 
+
+The result of the roll was {result}.
+
+Incorporate the users' selected action in to the story and provide new options for the user to choose from.
 """
 
 class Card(TypedDict):
@@ -341,28 +349,33 @@ def action_selection_node(state: GameState) -> GameState:
     return state
 
 def game_master_description_node(state: GameState) -> GameState:
-    # cards = [random.choice(deck) for _ in range(2)]
-    # dice = [random.randint(1, 6) for _ in range(2)]
-    # state["turns"][-1]["cards"] = cards
-    # state["turns"][-1]["dice"] = dice
+    cards = [random.choice(deck) for _ in range(2)]
+    dice = [random.randint(1, 6) for _ in range(2)]
+    state["turns"][-1]["cards"] = cards
+    state["turns"][-1]["dice"] = dice
 
-    # dice_sum = sum(dice) + 2 # Could be state.difficulty [easy/medium/hard]
+    dice_sum = sum(dice) + 2 # Could be state.difficulty [easy/medium/hard]
 
-    # if dice_sum > cards[0]["value"] and dice_sum > cards[1]["value"]:
-    #     state["turns"][-1]["result"] = "LIGHT"
-    # elif dice_sum > cards[0]["value"] or dice_sum > cards[1]["value"]:
-    #     state["turns"][-1]["result"] = "PENUMBRA"
-    # else:
-    #     state["turns"][-1]["result"] = "DARKNESS"
+    if dice_sum > cards[0]["value"] and dice_sum > cards[1]["value"]:
+        result = "LIGHT"
+        # state["turns"][-1]["result"] = "LIGHT"
+    elif dice_sum > cards[0]["value"] or dice_sum > cards[1]["value"]:
+        result = "PENUMBRA"
+        # state["turns"][-1]["result"] = "PENUMBRA"
+    else:
+        result = "DARKNESS"
+        # state["turns"][-1]["result"] = "DARKNESS"
+    state["turns"][-1]["result"] = result
     # Describe the outcome and provide new options
     prompt = ChatPromptTemplate.from_messages([
             ("system", game_master_prompt),
             ("system", player_prompt),
             ("ai", state["turns"][-1]["input"].content),
-            ("human", str(state["messages"]))
+            ("human", str(state["messages"])),
+            ("ai", result_prompt),
         ])
         
-    state["turns"][-1]["output"] = llm.invoke(prompt.format(location=state["turns"][-1]["location"]))
+    state["turns"][-1]["output"] = llm.invoke(prompt.invoke(input={"location":state["turns"][-1]["location"], "result":result}))
     # state["turns"][-1]["output"] = llm.invoke(str(state["messages"]))
     # state["turns"][-1]["summary"] = llm.invoke(f"concisely summarize this turn: {state['turns'][-1]}")
 

@@ -20,12 +20,11 @@ jsonpointer==3.0.0
 langchain-core==0.2.33
 langchain
 langchain-fireworks==0.1.7
-langgraph==0.2.4
+langgraph==0.2.7
 langgraph-checkpoint==1.0.3
 langsmith==0.1.99
 multidict==6.0.5
 openai==1.41.0
-orjson
 packaging==24.1
 pillow==10.4.0
 pydantic==2.8.2
@@ -39,3 +38,4 @@ typing_extensions==4.12.2
 urllib3==2.2.2
 yarl==1.9.4
 python-dotenv
+orjson
