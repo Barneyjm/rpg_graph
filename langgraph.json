@@ -1,6 +1,8 @@
 {
-  "python_version": "3.11",
-  "dependencies": ["."],
+  "python_version": "3.13",
+  "dependencies": [
+    "."
+  ],
   "graphs": {
     "agent": "./rpg_graph/agent.py:graph"
   },
