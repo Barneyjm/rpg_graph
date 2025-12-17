@@ -1,458 +1,288 @@
-from langgraph.graph import StateGraph, MessagesState, END
-from langchain.memory import ConversationEntityMemory
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.prompts import ChatPromptTemplate
-
-
+from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import MessagesState
 from langchain_fireworks import ChatFireworks
+from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.messages import AIMessage
+from langgraph.types import Command
 
-from typing import TypedDict, List
+from typing import Annotated, List
+from operator import add
 import random
-import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-llm = ChatFireworks(model="accounts/fireworks/models/llama-v3p1-70b-instruct")
-# Example invocation with entity memory
-thread_id = "game_thread_1"
-# memory_file = f"{thread_id}_memory.json"
-# memory = ConversationEntityMemory(llm=llm, file_path=memory_file)
+# LLM setup
+llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
+checkpointer = InMemorySaver()
 
-memory = MemorySaver()
-
-
-# Prompts from https://vivarium.tiddlyhost.com/
-
-game_master_prompt = """You are a GameMaster helping host a game of Vivarium. You will guide The Player through the game, provide descriptions, and help The Player make decisions. Don't introduce yourself. Keep the game as immsersive as possible.
-Vivarium is won by reactivating the Six Vivariums. The six vivariums are the seeds that the desert moon Saharantis will use to restore its greenery and summon communities once again. They still emit a subtle ultrasonic hum.
-The Player are a Biosentinel , a guardian of life. And The Player have just awakened from The Player cryopod,
-long after the apocalypse, in what is now a desert.
-The Player memories are mostly lost and hazy at best.
-"""
-
-player_prompt = """
-The Player remember the mission:
-to find the Vivariums and revitalize The Player lunar homeworld: Saharantis;
-to avoid and deactivate the remaining Automaniacs , the doomsday automatons
-; and maybe, just maybe... find others, roaming or still in their cryopods.
-
-As The Player explore the world and regain memory of the past, The Player will be able to seed the life of the future world.
-
-The player awakes in a region of the world. The region is a {location}.
-
-Their most recent turn actions are contained within the "Human" response below:"""
-
-summary_prompt = """
-The Player has taken the following actions:
-{summary}
-
-use these historical actions to craft the game into a memorable experience for The Player.
-"""
-
-foundation_prompt = """
-The player is the last of the BIO-SENTINELS . The Player awoke long after the apocalypse, with forgotten and blurred memories, but a clear mission: reactivate the Vivariums , while avoiding and fighting the Automaniacs, the automatons of the apocalypse that still carry with them the programming of destruction.
-
-As The Player explore the world, The Player recall the past, seeding and reviving a green world that lies beneath what is now the desert of The Playerr lunar homeworld, Saharantis.
-
-Taking Actions
-Actions guide The Playerr journey through the world. Each action helps The Player resolve whatever questions The Player have, or whatever The Player decide to do.
-
-When The Player perform an Action , do the following:
-
-Take 2 cards from The Playerr Adventure Deck .
-Roll The Playerr Action Dice and add up.
-Add the modifier to get The Playerr Score .
-Then, interpret the results and discard the cards:
-
-If The Playerr score is higher than both cards, there is Light .
-If The Playerr score is only higher than one of the cards, there is Penumbra .
-Otherwise, there is Darkness .
-Aces are worth 1, Jacks are worth 11, Queens are worth 12, and Kings are worth 13. Each action is stated as Action+(Modifier), and helps The Player determine what happens when there is Light , Dark , or Darkness ."""
-
-game_prompt = """
-Reactivating the Six Vivariums
-The six vivariums are the seeds that the desert moon Saharantis will use to restore its greenery and summon communities once again. They still emit a subtle ultrasonic hum. To locate the vivariums, do Discover a Region . If the card you add is a face card (Jack (11), Queen (12), or King (13)), there is one.
-
-Rest and Fatigue
-The Player may be required to mark a Fatigue when taking an action. When The Playerr fatigue marker fills or The Playerr Adventure Deck empties , The Player must rest or flee to stay alive—or risk snuffing out The Playerr own light. On a Rest , write an entry in The Playerr Journal , shuffle the cards The Player discarded during The Playerr journey, and erase all Fatigue .
-
-Fighting Automaniacs
-If The Player find any, The Player may fight them. The Player will stack cards according to Fighting Automaniacs . When the total stacked cards matches the Automaniac's Vitality, then it is defeated and deactivated. If The Player flee, the stacked cards remain until the next encounter.
-
-Terradroid (5 cards) : Quadrupedal, headless terrestrial android with an upper front arm. Fires stun darts. Red ♦♥ cards are worth double when stacked.
-Aerodrone (8 cards) : Its propellers allow high maneuverability and landing/taking off almost anywhere. It launches nets to confine its victims. Black ♠ ♣ cards are worth double when stacked.
-Pack (13 cards) : Groups of three Aerodrones or three Terradroids that hunt in an efficient and terrifying group. Swords ♠ are worth double when stacked.
-Mixed Pack (21 cards) : Trios that combine air and ground attack/recon for greater effectiveness and lethality. Hearts ♥ are worth double when stacked."""
-
-actions_prompt = """
-You are the game master. You will guide the player through the game. The player will take actions and you will determine the outcome of those actions.
-Here are the types of actions they can take along with the general results. Tailor the story to the results based on the actions chosen by the player:
-
-Facing the Risk
-    When facing adversity, Action+Style .
-    With Light , he has a total success .
-    With Penumbra , The Player have partial success .
-    With Darkness , The Player have a setback , mark 1 Fatigue .
-
-Search for Relics
-    When searching for something lost from the past, use Action+Style to determine how many Relics The Player find.
-    With Light , there are 2 relics .
-    With Penumbra , there is 1 relic .
-    With Darkness , there is an Automaniac , it scores 1 Fatigue .
-
-Flashback
-    When a relic evokes knowledge, determine the number of Relics to pay, and Action+Relic .
-    With Luz , The Player get detailed information
-    With Penumbra , The Player get incomplete information .
-    With Darkness , The Player get Ambiguous .
-
-Discover a region
-    When The Player are looking for a new path, Action+Style .
-    With Light , add the two cards to The Player map.
-    With Penumbra , add one of the cards to The Player map.
-    With Darkness , Impassable Path, mark 1 Fatigue . Keep just one card and either GET AN ANSWER FROM THE ORACLE or FACE THE RISK .
-
-Fighting against Curse
-    When The Player face a Curse, Action+Style . Repeat until the stacked cards equal Vitality.
-    With Light , stack the two cards against the Curse.
-    With Penumbra , stack one of the cards against the Curse.
-    With Darkness , AVOID DANGER.
-
-Avoiding Danger
-    When avoiding an imminent threat, Action+Style .
-    With Light , The Player avoid danger .
-    With Penumbra , score 1 Fatigue .
-    With Darkness , score 2 Fatigues .
-
-Getting an Answer from the Oracle
-    When The Player require Yes/No answers, Action+2 if likely. Action+0 unlikely. Action+1 50/50
-    With Light , the answer is " Yes, and... ".
-    With Penumbra , the answer is " Yes, but... ".
-    With Darkness , the answer is " No, and... ".
-"""
-
-result_prompt = """
-If the result is LIGHT -- it is a total success. If it is PENUMBRA -- it is a partial success. If it is DARKNESS -- it is a setback. Tailor the narration to match the result of the roll. 
-
-The result of the roll was {result}.
-
-Incorporate the users' selected action in to the story and provide new options for the user to choose from.
-"""
-
-class Card(TypedDict):
-    value: int
-    color: str
-
-colors = ['heart', 'diamonds', 'spades', 'clubs']
-deck = [Card({"value":value, "color":color}) for value in range(1, 14) for color in colors]
+# Game data
+colors = ['hearts', 'diamonds', 'spades', 'clubs']
+deck = [{"value": value, "color": color}
+        for value in range(1, 14) for color in colors]
 
 regions = {
-    "11":	"Planting",
-    "12":	"Burrow",
-    "13":	"Clearing",
-    "14":	"Forest",
-    "15":	"Tree",
-    "16":	"Ruins",
-    "21":	"Hills",
-    "22":	"Tunnels",
-    "23":	"Swamp",
-    "24":	"Mountains",
-    "25":	"River",
-    "26":	"Lake",
-    "31":	"Ocean",
-    "32":	"Island",
-    "33":	"Plain",
-    "34":	"Glacier",
-    "35":	"Pond",
-    "36":	"Desert",
-    "41":	"Tundra",
-    "42":	"Caves",
-    "43":	"Meadow",
-    "44":	"Nest",
-    "45":	"City",
-    "46":	"Cliffs",
-    "51":	"Gardens",
-    "52":	"Jungle",
-    "53":	"Prairie",
-    "54":	"Wasteland",
-    "55":	"Hive",
-    "56":	"Canyon",
-    "61":	"Catacombs",
-    "62":	"Volcano",
-    "63":	"Wetlands",
-    "64":	"Tomb",
-    "65":	"Estuary",
-    "66":	"Hollow",
-}
-
-themes = {
-"11":	"beauty",
-"12":	"Loyalty",
-"13":	"Money",
-"14":	"Life",
-"15":	"Death",
-"16":	"War",
-"21":	"Peace",
-"22":	"family",
-"23":	"Power",
-"24":	"Friendship",
-"25":	"Change",
-"26":	"Tradition",
-"31":	"Survival",
-"32":	"Liberty",
-"33":	"Weather",
-"34":	"Corruption",
-"35":	"Hope",
-"36":	"Love",
-"41":	"Revenge",
-"42":	"Identity",
-"43":	"Redemption",
-"44":	"Justice",
-"45":	"Honor",
-"46":	"Forgiveness",
-"51":	"Ambition",
-"52":	"Faith",
-"53":	"Greed",
-"54":	"Equality",
-"55":	"Deception",
-"56":	"Legacy",
-"61":	"Truth",
-"62":	"Sacrifice",
-"63":	"Loneliness",
-"64":	"Resilience",
-"65":	"Betrayal",
-"66":	"Fame",
-}
-
-events = {
-"11":	"Directing",
-"12":	"Redeem",
-"13":	"Infiltrate",
-"14":	"View",
-"15":	"Pursue",
-"16":	"Concentrate",
-"21":	"Planning",
-"22":	"Serve",
-"23":	"Create",
-"24":	"Escape",
-"25":	"Parliamentarian",
-"26":	"Insure",
-"31":	"Stealing",
-"32":	"search",
-"33":	"Sabotage",
-"34":	"Adapt",
-"35":	"Inspire",
-"36":	"betray",
-"41":	"Deceiving",
-"42":	"Hide",
-"43":	"Recover",
-"44":	"take advantage",
-"45":	"Attacking",
-"46":	"Observing",
-"51":	"Sacrifice",
-"52":	"Surviving",
-"53":	"Following",
-"54":	"Persuade",
-"55":	"Explore",
-"56":	"Execute",
-"61":	"Revenge",
-"62":	"Help",
-"63":	"Forgive",
-"64":	"Destroy",
-"65":	"Protect",
-"66":	"Learn",
-}
-
-people = {
-"11":	"Soldier",
-"12":	"Farmer",
-"13":	"Thief",
-"14":	"Gentleman",
-"15":	"Noble",
-"16":	"Peddler",
-"21":	"Sailor",
-"22":	"Peasant",
-"23":	"Spy",
-"24":	"Artisan",
-"25":	"Pirate",
-"26":	"Bandit",
-"31":	"Monk",
-"32":	"Healer",
-"33":	"Guard",
-"34":	"Nomad",
-"35":	"Hunter",
-"36":	"Leader",
-"41":	"Assailant",
-"42":	"Paria",
-"43":	"Miner",
-"44":	"Worker",
-"45":	"Bardo",
-"46":	"Strange",
-"51":	"Guerrero",
-"52":	"Scholar",
-"53":	"Bounty Hunter",
-"54":	"Creature",
-"55":	"Mendigo",
-"56":	"Tailor",
-"61":	"Magician",
-"62":	"Pilluelo",
-"63":	"Engineer",
-"64":	"Herbalist",
-"65":	"Brewer",
-"66":	"Tracker",
+    "11": "Planting", "12": "Burrow", "13": "Clearing", "14": "Forest",
+    "15": "Tree", "16": "Ruins", "21": "Hills", "22": "Tunnels",
+    "23": "Swamp", "24": "Mountains", "25": "River", "26": "Lake",
+    "31": "Ocean", "32": "Island", "33": "Plain", "34": "Glacier",
+    "35": "Pond", "36": "Desert", "41": "Tundra", "42": "Caves",
+    "43": "Meadow", "44": "Nest", "45": "City", "46": "Cliffs",
+    "51": "Gardens", "52": "Jungle", "53": "Prairie", "54": "Wasteland",
+    "55": "Hive", "56": "Canyon", "61": "Catacombs", "62": "Volcano",
+    "63": "Wetlands", "64": "Tomb", "65": "Estuary", "66": "Hollow",
 }
 
 
-class Player(TypedDict):
-    name: str
-    fatigue: int = 0
-    skill_0: str
-    skill_1: str
-    skill_2: str
+# Welcome message shown at start of new threads
+welcome_message = AIMessage(content="""Welcome to **Vivarium**, Biosentinel.
 
-class Turn(TypedDict):
-    player: Player
-    location: str
-    cards: List[Card]
-    rolls: List[int]
-    result: str
-    input: str
-    action: str
-    output: str
+You awaken from cryosleep on Saharantis, a desert moon that was once green and alive. Your mission: find and reactivate the Six Vivariums—ancient seeds that can restore life to this barren world.
 
-# Define the state for the game
+But beware the Automaniacs, doomsday machines still carrying out their programming of destruction.
+
+Your memories are hazy, but your purpose is clear.
+
+*What would you like to do?*""")
+
+
+# Custom state with game tracking
 class GameState(MessagesState):
-    turns: List[Turn] = []
-    player: Player = {}
-    completed_regions: List[str] = []
-    summary: str
-    latest_action: str
+    # Don't override messages - MessagesState already handles it with proper annotation
+    fatigue: int = 0
+    vivariums_found: int = 0
+    current_region: str = ""
+    discovered_regions: Annotated[List[str], add] = []
+    relics: Annotated[List[str], add] = []
 
-# Define the logic for each node
-def setup_node(state: GameState) -> GameState:
+
+# Game tools that can update state
+@tool
+def roll_dice(modifier: int = 0) -> str:
+    """Roll 2d6 and add a modifier. Used for taking actions in the game.
+
+    Args:
+        modifier: A bonus or penalty to add to the roll (default 0)
+    """
     dice = [random.randint(1, 6) for _ in range(2)]
-    location = regions["".join([str(d) for d in dice])]
-    if state.get("turns") is None:
-        state["turns"] = []
-    prompt = ChatPromptTemplate.from_messages([
-            ("system", game_master_prompt),
-            ("system", player_prompt)
-        ])
-    init = llm.invoke(prompt.format(location=location))
-    state["turns"].append(Turn({"input": init, "output": init, "location": location}))
-    return state
+    total = sum(dice) + modifier
+    return f"Rolled {dice[0]} + {dice[1]} = {sum(dice)}, with modifier {modifier} = {total}"
 
-def action_selection_node(state: GameState) -> GameState:
-    state["turns"].append(Turn({"input": state["turns"][-1]["output"], "location": state["turns"][-1]["location"]}))
-    return state
 
-def game_master_description_node(state: GameState) -> GameState:
+@tool
+def draw_cards(count: int = 2) -> str:
+    """Draw cards from the adventure deck to determine outcomes.
+
+    Args:
+        count: Number of cards to draw (default 2)
+    """
+    cards = [random.choice(deck) for _ in range(count)]
+    cards_str = ", ".join([f"{c['value']} of {c['color']}" for c in cards])
+    return f"Drew {count} cards: {cards_str}"
+
+
+@tool
+def take_action(
+    action_type: str,
+    modifier: int = 0,
+    tool_call_id: Annotated[str, InjectedToolCallId] = ""
+) -> Command:
+    """Perform a game action with dice roll and card draw to determine the outcome.
+    Automatically tracks fatigue on DARKNESS results.
+
+    Actions: face_risk, search_relics, flashback, discover_region,
+             fight_automaniac, avoid_danger, ask_oracle
+
+    Args:
+        action_type: The type of action being taken
+        modifier: Modifier to add to the dice roll
+    """
+    dice = [random.randint(1, 6) for _ in range(2)]
+    dice_total = sum(dice) + modifier
     cards = [random.choice(deck) for _ in range(2)]
+
+    # Determine result
+    fatigue_gain = 0
+    if dice_total > cards[0]["value"] and dice_total > cards[1]["value"]:
+        result = "LIGHT (Total Success)"
+    elif dice_total > cards[0]["value"] or dice_total > cards[1]["value"]:
+        result = "PENUMBRA (Partial Success)"
+    else:
+        result = "DARKNESS (Setback)"
+        fatigue_gain = 1
+
+    cards_str = ", ".join([f"{c['value']} of {c['color']}" for c in cards])
+
+    message = f"""Action: {action_type}
+Dice: {dice[0]} + {dice[1]} + {modifier} = {dice_total}
+Cards: {cards_str}
+Result: {result}"""
+
+    if fatigue_gain > 0:
+        message += f"\n⚠️ +{fatigue_gain} Fatigue"
+
+    # Return Command to update state
+    return Command(
+        update={
+            "fatigue": fatigue_gain,  # Will be added to current value
+            "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+        }
+    )
+
+
+@tool
+def discover_new_region(
+    tool_call_id: Annotated[str, InjectedToolCallId] = ""
+) -> Command:
+    """Discover a new region by rolling 2d6 to determine the location type.
+    Automatically adds the region to discovered_regions."""
     dice = [random.randint(1, 6) for _ in range(2)]
-    state["turns"][-1]["cards"] = cards
-    state["turns"][-1]["dice"] = dice
+    key = f"{dice[0]}{dice[1]}"
+    region = regions.get(key, "Unknown Territory")
 
-    dice_sum = sum(dice) + 2 # Could be state.difficulty [easy/medium/hard]
+    message = f"Rolled {dice[0]}, {dice[1]} - Discovered: {region}"
 
-    if dice_sum > cards[0]["value"] and dice_sum > cards[1]["value"]:
-        result = "LIGHT"
-        # state["turns"][-1]["result"] = "LIGHT"
-    elif dice_sum > cards[0]["value"] or dice_sum > cards[1]["value"]:
-        result = "PENUMBRA"
-        # state["turns"][-1]["result"] = "PENUMBRA"
-    else:
-        result = "DARKNESS"
-        # state["turns"][-1]["result"] = "DARKNESS"
-    state["turns"][-1]["result"] = result
-    # Describe the outcome and provide new options
-    prompt = ChatPromptTemplate.from_messages([
-            ("system", game_master_prompt),
-            ("system", player_prompt),
-            ("ai", state["turns"][-1]["input"].content),
-            ("human", str(state["messages"])),
-            ("ai", result_prompt),
-        ])
-        
-    state["turns"][-1]["output"] = llm.invoke(prompt.invoke(input={"location":state["turns"][-1]["location"], "result":result}))
-    # state["turns"][-1]["output"] = llm.invoke(str(state["messages"]))
-    # state["turns"][-1]["summary"] = llm.invoke(f"concisely summarize this turn: {state['turns'][-1]}")
+    return Command(
+        update={
+            "current_region": region,
+            "discovered_regions": [region],
+            "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+        }
+    )
 
-    return state
 
-def finalize_game(state: GameState) -> GameState:
-    state["turns"].append(Turn({"input": "Game Over", "output": "Game Over"}))
-    return state
+@tool
+def check_for_vivarium(
+    tool_call_id: Annotated[str, InjectedToolCallId] = ""
+) -> Command:
+    """When discovering a region, check if a Vivarium is present.
+    A Vivarium is found if a face card (Jack=11, Queen=12, King=13) is drawn.
+    Automatically tracks vivariums_found."""
+    card = random.choice(deck)
+    found = card["value"] >= 11
+    card_name = {11: "Jack", 12: "Queen", 13: "King"}.get(
+        card["value"], str(card["value"]))
 
-def should_continue_game(state: GameState) -> str:
-    # Simulate player choosing to continue or not
-    if state["player"]["fatigue"] > 5:
-        return "finalize_game"
-    return "action_selection_node"
-    # if "completed_regions" not in state.keys():
-    #     state["completed_regions"] = []
-    #     return "action_selection_node"
-    # elif len(state["completed_regions"]) < 2:
-    # else:
-
-    # else:
-    #     return "finalize_game"
-
-def summarize_conversation(state: GameState) -> GameState:
-    # First, we summarize the conversation
-    summary = state.get("summary", "")
-    if summary:
-        # If a summary already exists, we use a different system prompt
-        # to summarize it than if one didn't
-        summary_message = (
-            f"This is summary of the conversation to date: {summary}\n\n"
-            "Extend the summary by taking into account the new messages above:"
+    if found:
+        message = f"Drew {card_name} of {card['color']} - 🌱 VIVARIUM FOUND! One of the six seeds to restore Saharantis!"
+        return Command(
+            update={
+                "vivariums_found": 1,  # Will be added
+                "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+            }
         )
-    else:
-        summary_message = "Create a summary of the conversation above:"
 
-    messages = [turn["output"] for turn in state["turns"][-3:]] + [summary_message]
-    state["summary"] = llm.invoke(messages)
-    return state
-
-def should_summarize(state: GameState) ->  str:
-    """Return the next node to execute."""
-    if state["turns"] > 3:
-        return "summarize_conversation"
-    # Otherwise we can just end
-    return "action_selection_node"
-
-# Create the graph
-graph = StateGraph(GameState)
-
-# Add nodes
-graph.add_node("setup_node", setup_node)
-graph.add_node("action_selection_node", action_selection_node)
-# graph.add_node("summarize_conversation", summarize_conversation)
-# graph.add_node("outcome_determination_node", outcome_determination_node)
-graph.add_node("game_master_description_node", game_master_description_node)
-graph.add_node("finalize_game", finalize_game)
-
-# Define edges
-graph.add_edge("setup_node", "action_selection_node")
-graph.add_edge("action_selection_node", "game_master_description_node")
-# graph.add_conditional_edges("action_selection_node", summarize_conversation, {"action_selection_node": "action_selection_node", "summarize_conversation": "summarize_conversation"})
-
-# graph.add_edge("outcome_determination_node", "game_master_description_node")
-graph.add_conditional_edges("game_master_description_node", should_continue_game, {"action_selection_node": "action_selection_node", "finalize_game": "finalize_game"})
-
-# Set entry and finish points
-graph.set_entry_point("setup_node")
-graph.add_edge("game_master_description_node", "finalize_game")
-graph.add_edge("finalize_game", END)
-
-# Compile the graph
-app = graph.compile(interrupt_before=["action_selection_node"])
+    message = f"Drew {card_name} of {card['color']} - No Vivarium here."
+    return Command(
+        update={
+            "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+        }
+    )
 
 
+@tool
+def rest(tool_call_id: Annotated[str, InjectedToolCallId] = "") -> Command:
+    """Rest to recover from fatigue. Resets fatigue to 0.
+    Use this when fatigue is high or the adventure deck needs reshuffling."""
+    message = "You find a safe place to rest. Your fatigue fades as you recover your strength. ✨ Fatigue reset to 0."
+    return Command(
+        update={
+            "fatigue": 0,
+            "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+        },
+        # Note: fatigue=0 here is absolute, not additive
+        # We handle this by using a custom reducer or setting directly
+    )
 
-initial_state = {"messages": []}
-result = app.invoke(initial_state)
-print(result)
 
+@tool
+def get_game_status(
+    tool_call_id: Annotated[str, InjectedToolCallId] = ""
+) -> Command:
+    """Get the current game status. Call this to check fatigue, vivariums found, and regions.
+    IMPORTANT: Always call this at the start of your response to know the current game state."""
+    # This returns a Command that doesn't change state but prompts the agent
+    # The actual state values will be injected by the pre_model_hook
+    return Command(
+        update={
+            "messages": [{"role": "tool", "content": "Status retrieved. Check the game state context above.", "tool_call_id": tool_call_id}]
+        }
+    )
+
+
+# Static system prompt
+system_prompt = """You are the GameMaster for Vivarium, a solo RPG set on the desert moon Saharantis.
+
+THE SETTING:
+The Player is a Biosentinel, a guardian of life who has just awakened from cryosleep long after an apocalypse. Their mission: reactivate the Six Vivariums (seeds to restore life) while avoiding Automaniacs (doomsday automatons).
+
+YOUR ROLE:
+- Guide the player through immersive exploration and encounters
+- Use the game tools to resolve actions with dice and cards
+- Interpret results narratively (LIGHT = success, PENUMBRA = partial, DARKNESS = setback)
+- ALWAYS mention current fatigue when it increases
+- Warn the player when fatigue reaches 4+ (they must rest or risk death)
+- Celebrate when Vivariums are found!
+- Keep descriptions atmospheric and engaging
+
+AVAILABLE ACTIONS FOR PLAYERS:
+- Face the Risk: Confront danger or adversity
+- Search for Relics: Look for items from the past
+- Flashback: Use relics to recover memories
+- Discover a Region: Explore new areas (always check_for_vivarium after!)
+- Fight Automaniacs: Combat the doomsday machines
+- Avoid Danger: Escape threats
+- Ask the Oracle: Get yes/no answers about the world
+- Rest: Clear all fatigue (required when fatigue is high)
+
+When the player wants to take an action, use the appropriate tools to determine the outcome, then narrate the result.
+
+IMPORTANT: A [GAME STATUS] message will be injected showing current fatigue, vivariums, and region. Use this to track the game state."""
+
+
+def inject_game_status(state: GameState) -> dict:
+    """Pre-model hook to inject current game state into messages."""
+    fatigue = state.get("fatigue", 0)
+    vivariums = state.get("vivariums_found", 0)
+    current_region = state.get("current_region", "Unknown")
+    discovered = state.get("discovered_regions", [])
+
+    fatigue_warning = " ⚠️ REST SOON!" if fatigue >= 4 else ""
+    victory_note = " 🎉 VICTORY CLOSE!" if vivariums >= 5 else ""
+
+    status_msg = f"""[GAME STATUS]
+Fatigue: {fatigue}/5{fatigue_warning}
+Vivariums: {vivariums}/6{victory_note}
+Current Region: {current_region or 'Not yet discovered'}
+Discovered: {', '.join(discovered) if discovered else 'None'}
+[/GAME STATUS]"""
+
+    # Inject as a system message that appears before the model processes
+    messages = state.get("messages", [])
+    return {
+        "messages": [{"role": "system", "content": status_msg}] + list(messages)
+    }
+
+
+# Create the agent with custom state
+tools = [roll_dice, draw_cards, take_action,
+         discover_new_region, check_for_vivarium, rest, get_game_status]
+
+app = create_agent(
+    llm,
+    tools=tools,
+    system_prompt=system_prompt,
+    state_schema=GameState,
+)
+
+if __name__ == "__main__":
+    config = {"configurable": {"thread_id": "game_1"}}
+
+    result = app.invoke({"messages": [welcome_message]}, config)
+    print(result["messages"][-1].content)
+    print(f"\n--- Game State ---")
+    print(f"Fatigue: {result.get('fatigue', 0)}")
+    print(f"Vivariums: {result.get('vivariums_found', 0)}/6")
+    print(f"Region: {result.get('current_region', 'Unknown')}")
