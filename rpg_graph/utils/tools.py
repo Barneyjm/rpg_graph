@@ -1,6 +1,9 @@
+import os
 import random
+import base64
 from typing import Annotated
 
+import requests
 from langchain_core.tools import tool, InjectedToolCallId
 from langgraph.types import Command
 
@@ -175,6 +178,90 @@ def get_game_status(
     )
 
 
+@tool
+def generate_scene_image(
+    scene_description: str,
+    tool_call_id: Annotated[str, InjectedToolCallId] = ""
+) -> Command:
+    """Generate an image to illustrate the current scene. Call this after narrating
+    a significant moment - discovering a region, finding a vivarium, encountering
+    danger, or any dramatic scene worth visualizing.
+
+    Args:
+        scene_description: A vivid description of the scene to illustrate.
+            Should be atmospheric and visual, describing the environment,
+            lighting, and any key elements. Keep it under 200 words.
+    """
+    api_key = os.getenv("FIREWORKS_API_KEY")
+    if not api_key:
+        return Command(
+            update={
+                "messages": [{
+                    "role": "tool",
+                    "content": "Error: FIREWORKS_API_KEY not set",
+                    "tool_call_id": tool_call_id
+                }]
+            }
+        )
+
+    # Add style context for consistent visuals
+    styled_prompt = f"Sci-fi post-apocalyptic desert moon landscape, alien terrain, {scene_description}, atmospheric lighting, cinematic, detailed environment art, no text, no words"
+
+    url = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-1-schnell-fp8/text_to_image"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "image/png",
+        "Authorization": f"Bearer {api_key}",
+    }
+    data = {
+        "prompt": styled_prompt,
+        "aspect_ratio": "16:9",
+        "guidance_scale": 3.5,
+        "num_inference_steps": 1,
+        "seed": -1
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+
+        if response.status_code == 200:
+            # Store image in state (not in messages to avoid context overflow)
+            image_b64 = base64.b64encode(response.content).decode("utf-8")
+            return Command(
+                update={
+                    # Store image separately in state for UI to display
+                    "latest_image": f"data:image/png;base64,{image_b64}",
+                    # Send short confirmation to LLM (not the image itself)
+                    "messages": [{
+                        "role": "tool",
+                        "content": "Scene image generated successfully.",
+                        "tool_call_id": tool_call_id
+                    }]
+                }
+            )
+        else:
+            return Command(
+                update={
+                    "messages": [{
+                        "role": "tool",
+                        "content": f"Image generation failed: {response.status_code}",
+                        "tool_call_id": tool_call_id
+                    }]
+                }
+            )
+    except requests.RequestException as e:
+        return Command(
+            update={
+                "messages": [{
+                    "role": "tool",
+                    "content": f"Image generation error: {str(e)}",
+                    "tool_call_id": tool_call_id
+                }]
+            }
+        )
+
+
 # Export all tools
 tools = [roll_dice, draw_cards, take_action,
-         discover_new_region, check_for_vivarium, rest, get_game_status]
+         discover_new_region, check_for_vivarium, rest, get_game_status,
+         generate_scene_image]

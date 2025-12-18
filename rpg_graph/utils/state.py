@@ -1,4 +1,4 @@
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 from operator import add
 
 from langgraph.graph import MessagesState
@@ -25,3 +25,5 @@ class GameState(MessagesState):
     current_region: str = ""
     discovered_regions: Annotated[List[str], add] = []
     relics: Annotated[List[str], add] = []
+    # Store latest generated image separately (not in messages sent to LLM)
+    latest_image: Optional[str] = None

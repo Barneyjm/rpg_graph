@@ -1,4 +1,5 @@
 from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 from langchain_fireworks import ChatFireworks
 
 from rpg_graph.utils.state import GameState
@@ -6,6 +7,32 @@ from rpg_graph.utils.tools import tools
 
 # LLM setup
 llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
+
+# Summarization middleware to manage context length
+GAME_SUMMARY_PROMPT = """You are summarizing the conversation history for a solo RPG called Vivarium.
+
+Preserve these critical narrative elements in your summary:
+- Key story events and discoveries (regions found, encounters, outcomes)
+- Important NPCs or creatures encountered
+- Relics found and their significance
+- Memorable moments (both successes and failures)
+- Current narrative threads or unresolved situations
+- The player's established character traits or decisions
+
+DO NOT include in the summary (these are tracked separately in game state):
+- Fatigue level
+- Number of vivariums found
+- List of discovered regions
+- Current region
+
+Write the summary as a narrative recap that captures the adventure's story so far."""
+
+summarization_middleware = SummarizationMiddleware(
+    model=llm,
+    trigger=("tokens", 8000),
+    keep=("messages", 10),
+    summary_prompt=GAME_SUMMARY_PROMPT,
+)
 
 # Static system prompt
 system_prompt = """You are the GameMaster for Vivarium, a solo RPG set on the desert moon Saharantis.
@@ -33,6 +60,15 @@ AVAILABLE ACTIONS FOR PLAYERS:
 - Rest: Clear all fatigue (required when fatigue is high)
 
 When the player wants to take an action, use the appropriate tools to determine the outcome, then narrate the result.
+
+IMAGE GENERATION:
+After narrating dramatic or significant moments, use generate_scene_image to create a visual illustration. Good moments for images include:
+- Discovering a new region (show the landscape)
+- Finding a Vivarium (show the glowing seed)
+- Encountering Automaniacs (show the threatening machines)
+- Dramatic action outcomes (especially DARKNESS setbacks)
+- Atmospheric moments during rest or exploration
+Describe the scene vividly for the image prompt, focusing on visual elements like lighting, terrain, and mood.
 
 IMPORTANT: A [GAME STATUS] message will be injected showing current fatigue, vivariums, and region. Use this to track the game state."""
 
@@ -67,4 +103,5 @@ graph = create_agent(
     tools=tools,
     system_prompt=system_prompt,
     state_schema=GameState,
+    middleware=[summarization_middleware],
 )
