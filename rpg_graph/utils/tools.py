@@ -292,11 +292,18 @@ def take_action(
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
 ) -> Command:
     """Perform a game action with dice roll and card draw to determine the outcome.
+<<<<<<< HEAD
     The player rolls dice and draws cards! Automatically tracks sleepiness on SNOWDRIFT results.
     Costs 1 turn on the Christmas Clock.
 
     Actions: brave_blizzard, search_treats, holiday_memory, explore_location,
              chase_gremlins, sneak_past
+=======
+    Automatically tracks sleepiness on SNOWDRIFT results.
+
+    Actions: brave_blizzard, search_treats, holiday_memory, explore_location,
+             chase_gremlins, sneak_past, ask_snowglobe
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
 
     Args:
         action_type: The type of action being taken
@@ -344,6 +351,7 @@ def take_action(
     cards = [parse_card(c) for c in card_strings]
 
     # Determine result
+<<<<<<< HEAD
     is_sparkle = dice_total > cards[0]["value"] and dice_total > cards[1]["value"]
     is_flurry = dice_total > cards[0]["value"] or dice_total > cards[1]["value"]
     is_snowdrift = not is_flurry
@@ -382,9 +390,20 @@ def take_action(
         else:
             result = "🌨️ SNOWDRIFT (Setback)"
             sleepiness_gain = 1
+=======
+    sleepiness_gain = 0
+    if dice_total > cards[0]["value"] and dice_total > cards[1]["value"]:
+        result = "✨ SPARKLE (Total Success!)"
+    elif dice_total > cards[0]["value"] or dice_total > cards[1]["value"]:
+        result = "❄️ FLURRY (Partial Success)"
+    else:
+        result = "🌨️ SNOWDRIFT (Setback)"
+        sleepiness_gain = 1
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
 
     cards_str = ", ".join(card_strings)
 
+<<<<<<< HEAD
     # Build message
     modifier_str = f" + {total_modifier}" if total_modifier else ""
     message = f"""🎲 Action: {action_type}
@@ -418,6 +437,23 @@ Result: {result}"""
         update["inventory"] = updated_inventory
 
     return Command(update=update)
+=======
+    message = f"""🎲 Action: {action_type}
+Dice: {dice[0]} + {dice[1]} + {modifier} = {dice_total}
+Cards: {cards_str}
+Result: {result}"""
+
+    if sleepiness_gain > 0:
+        message += f"\n😴 +{sleepiness_gain} Sleepiness (too many cookies!)"
+
+    # Return Command to update state
+    return Command(
+        update={
+            "fatigue": sleepiness_gain,  # Will be added to current value (sleepiness!)
+            "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+        }
+    )
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
 
 
 @tool
@@ -425,6 +461,7 @@ def discover_new_region(
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
 ) -> Command:
     """Explore a new magical location by rolling 2d6 to determine where you end up.
+<<<<<<< HEAD
     The player rolls the dice! Automatically adds the location to explored places.
     Costs 1 turn on the Christmas Clock."""
     # Request dice from user
@@ -468,6 +505,19 @@ def discover_new_region(
             "last_dice": None,
             "last_card": None,
             "region_action_taken": False,
+=======
+    Automatically adds the location to explored places!"""
+    dice = [random.randint(1, 6) for _ in range(2)]
+    key = f"{dice[0]}{dice[1]}"
+    location = regions.get(key, "Mysterious Snowy Place")
+
+    message = f"🗺️ Rolled {dice[0]}, {dice[1]} - You found: **{location}**! ✨"
+
+    return Command(
+        update={
+            "current_region": location,
+            "discovered_regions": [location],
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
             "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
         }
     )
@@ -490,6 +540,7 @@ def request_region_state() -> dict:
 def check_for_gift(
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
 ) -> Command:
+<<<<<<< HEAD
     """Search the current location for a Magic Gift!
     The player draws a card! A Magic Gift is found if a face card (Jack=11, Queen=12, King=13) is drawn.
     IMPORTANT: You must take an action in the region first before searching for a gift!
@@ -537,9 +588,16 @@ def check_for_gift(
     card_str = card_strings[0] if card_strings else "Ace of hearts"
     card = parse_card(card_str)
 
+=======
+    """When exploring a new location, check if a Magic Gift is hidden there!
+    A Magic Gift is found if a face card (Jack=11, Queen=12, King=13) is drawn.
+    Automatically tracks gifts found!"""
+    card = random.choice(deck)
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
     found = card["value"] >= 11
 
     if found:
+<<<<<<< HEAD
         gift_names = ["Sparkling Snow Globe", "Golden Jingle Bell", "Magical Toy Train",
                       "Enchanted Nutcracker", "Glowing Star Ornament", "Crystal Candy Cane"]
         gift = random.choice(gift_names)
@@ -550,11 +608,24 @@ def check_for_gift(
                 "turns_remaining": turns_after,
                 "last_dice": None,
                 "last_card": None,
+=======
+        gift_names = ["a Sparkling Snow Globe", "the Golden Jingle Bell", "a Magical Toy Train",
+                      "the Enchanted Nutcracker", "a Glowing Star Ornament", "the Crystal Candy Cane"]
+        gift = random.choice(gift_names)
+        message = f"🃏 Drew {card_name} of {card['color']} - 🎁✨ **MAGIC GIFT FOUND!** ✨🎁\nYou discovered {gift}! Christmas is one step closer to being saved!"
+        return Command(
+            update={
+                "vivariums_found": 1,  # Will be added (tracking gifts found)
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
                 "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
             }
         )
 
+<<<<<<< HEAD
     message = f"🃏 Drew {card_str} - No Magic Gift here... but keep searching! 🔍\n⏰ Turns remaining: {turns_after}"
+=======
+    message = f"🃏 Drew {card_name} of {card['color']} - No Magic Gift here... but keep searching! 🔍"
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
     return Command(
         update={
             "turns_remaining": turns_after,
@@ -568,6 +639,7 @@ def check_for_gift(
 @tool
 def hot_cocoa_break(tool_call_id: Annotated[str, InjectedToolCallId] = "") -> Command:
     """Take a cozy break with hot cocoa to recover from sleepiness! Resets sleepiness to 0.
+<<<<<<< HEAD
     WARNING: This costs 2 turns on the Christmas Clock - time passes while you rest!
     Use this when your elf is getting too drowsy from all those cookies!"""
     # Hot cocoa break needs to get current state to check time
@@ -589,14 +661,22 @@ def hot_cocoa_break(tool_call_id: Annotated[str, InjectedToolCallId] = "") -> Co
         )
 
     message = f"""☕ **Hot Cocoa Break!** ☕
+=======
+    Use this when your elf is getting too drowsy from all those cookies!"""
+    message = """☕ **Hot Cocoa Break!** ☕
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
 
 You find a cozy spot by a warm fireplace. Mrs. Claus hands you a steaming mug of hot cocoa with extra marshmallows!
 
 *~sip sip~* 🍫
 
+<<<<<<< HEAD
 You feel refreshed and ready for more adventure! ✨ Sleepiness reset to 0!
 
 ⏰ But time passes... (-2 turns) Turns remaining: {turns_after}"""
+=======
+You feel refreshed and ready for more adventure! ✨ Sleepiness reset to 0!"""
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
     return Command(
         update={
             "sleepiness": 0,
@@ -611,6 +691,7 @@ def generate_scene_image(
     scene_description: str,
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
 ) -> Command:
+<<<<<<< HEAD
     """Generate an image to illustrate the current scene. Call this after narrating
     a significant moment - discovering a region, finding a vivarium, encountering
     danger, or any dramatic scene worth visualizing.
@@ -1105,12 +1186,25 @@ You gaze deep into the swirling snow...
             "last_dice": None,
             "last_card": None,
             "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+=======
+    """Check how the Christmas rescue mission is going! Shows sleepiness, gifts found, and explored locations.
+    IMPORTANT: Always call this at the start of your response to know the current game state."""
+    # This returns a Command that doesn't change state but prompts the agent
+    # The actual state values will be injected by the pre_model_hook
+    return Command(
+        update={
+            "messages": [{"role": "tool", "content": "🎄 Status retrieved! Check the game state above to see how close we are to saving Christmas! 🎅", "tool_call_id": tool_call_id}]
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89
         }
     )
 
 
 # Export all tools
 tools = [roll_dice, draw_cards, take_action,
+<<<<<<< HEAD
          discover_new_region, check_for_gift, hot_cocoa_break,
          generate_scene_image, check_inventory, pick_up_item,
          drop_item, use_item, search_for_items, ask_snow_globe]
+=======
+         discover_new_region, check_for_gift, hot_cocoa_break, get_game_status]
+>>>>>>> b91ffe8e817aafb942400d6623cfdecb9cbefc89

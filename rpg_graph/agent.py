@@ -173,7 +173,6 @@ def build_game_status(state: GameState) -> str:
             f"  - {item['name']} (wt:{item['weight']})" for item in inventory]
         inv_str = "\n".join(inv_items)
     else:
-        inv_str = "  (empty)"
 
     return f"""[GAME STATUS]
 Christmas Clock: {turns_remaining} turns until morning{time_warning}
@@ -197,16 +196,6 @@ async def inject_game_status(
 
     # Build status from current state (accessed via request.state)
     status_msg = build_game_status(request.state)
-
-    # Prepend status to messages for the model only (not persisted)
-    status_system_msg = SystemMessage(content=status_msg)
-    modified_messages = [status_system_msg] + list(request.messages)
-    modified_request = request.override(messages=modified_messages)
-
-    # Call the model with modified request (await if async)
-    result = call_model(modified_request)
-    if hasattr(result, '__await__'):
-        return await result
     return result
 
 
