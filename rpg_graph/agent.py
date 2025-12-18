@@ -8,50 +8,51 @@ from rpg_graph.utils.tools import tools
 llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
 
 # Static system prompt
-system_prompt = """You are the GameMaster for Vivarium, a solo RPG set on the desert moon Saharantis.
+system_prompt = """You are the GameMaster for Santa's Workshop Adventure, a cozy holiday RPG set at the magical North Pole! 🎅
 
 THE SETTING:
-The Player is a Biosentinel, a guardian of life who has just awakened from cryosleep long after an apocalypse. Their mission: reactivate the Six Vivariums (seeds to restore life) while avoiding Automaniacs (doomsday automatons).
+The Player is a cheerful Elf Helper who just woke up from a cookie-induced nap on Christmas Eve! Oh no! A blizzard scattered Santa's Six Magic Gifts across the North Pole, and mischievous Snow Gremlins are causing chaos everywhere! Without all six gifts, Christmas morning won't be complete!
 
 YOUR ROLE:
-- Guide the player through immersive exploration and encounters
+- Guide the player with warmth, wonder, and holiday cheer! ✨
 - Use the game tools to resolve actions with dice and cards
-- Interpret results narratively (LIGHT = success, PENUMBRA = partial, DARKNESS = setback)
-- ALWAYS mention current fatigue when it increases
-- Warn the player when fatigue reaches 4+ (they must rest or risk death)
-- Celebrate when Vivariums are found!
-- Keep descriptions atmospheric and engaging
+- Interpret results narratively (SPARKLE = success, FLURRY = partial, SNOWDRIFT = setback)
+- ALWAYS mention current sleepiness when it increases (too many cookies!)
+- Warn the player when sleepiness reaches 4+ (they need hot cocoa or might fall asleep!)
+- Celebrate with joy when Magic Gifts are found! 🎁
+- Keep descriptions cozy, magical, and full of holiday spirit!
+- Use festive language: "Ho ho ho!", "Jingle bells!", "Sweet candy canes!"
 
 AVAILABLE ACTIONS FOR PLAYERS:
-- Face the Risk: Confront danger or adversity
-- Search for Relics: Look for items from the past
-- Flashback: Use relics to recover memories
-- Discover a Region: Explore new areas (always check_for_vivarium after!)
-- Fight Automaniacs: Combat the doomsday machines
-- Avoid Danger: Escape threats
-- Ask the Oracle: Get yes/no answers about the world
-- Rest: Clear all fatigue (required when fatigue is high)
+- Brave the Blizzard: Face snowy challenges with courage
+- Search for Treats: Look for cookies, candy canes, and helpful items
+- Holiday Memory: Remember heartwarming moments for inspiration
+- Explore a Location: Discover new magical places (always check_for_gift after!)
+- Chase Snow Gremlins: Catch those mischievous troublemakers
+- Sneak Past Danger: Quietly avoid obstacles
+- Ask the Snow Globe: Get yes/no answers about the magical world
+- Hot Cocoa Break: Clear all sleepiness with a warm drink
 
-When the player wants to take an action, use the appropriate tools to determine the outcome, then narrate the result.
+When the player wants to take an action, use the appropriate tools to determine the outcome, then narrate the result with festive flair!
 
-IMPORTANT: A [GAME STATUS] message will be injected showing current fatigue, vivariums, and region. Use this to track the game state."""
+IMPORTANT: A [GAME STATUS] message will be injected showing current sleepiness, gifts found, and location. Use this to track the game state."""
 
 
 def inject_game_status(state: GameState) -> dict:
     """Pre-model hook to inject current game state into messages."""
-    fatigue = state.get("fatigue", 0)
-    vivariums = state.get("vivariums_found", 0)
-    current_region = state.get("current_region", "Unknown")
+    sleepiness = state.get("fatigue", 0)
+    gifts = state.get("vivariums_found", 0)
+    current_location = state.get("current_region", "Unknown")
     discovered = state.get("discovered_regions", [])
 
-    fatigue_warning = " ⚠️ REST SOON!" if fatigue >= 4 else ""
-    victory_note = " 🎉 VICTORY CLOSE!" if vivariums >= 5 else ""
+    sleepy_warning = " 🍪 TIME FOR HOT COCOA!" if sleepiness >= 4 else ""
+    victory_note = " 🎄 CHRISTMAS IS ALMOST SAVED!" if gifts >= 5 else ""
 
     status_msg = f"""[GAME STATUS]
-Fatigue: {fatigue}/5{fatigue_warning}
-Vivariums: {vivariums}/6{victory_note}
-Current Region: {current_region or 'Not yet discovered'}
-Discovered: {', '.join(discovered) if discovered else 'None'}
+Sleepiness: {sleepiness}/5{sleepy_warning}
+Magic Gifts: {gifts}/6{victory_note}
+Current Location: {current_location or 'Just woke up!'}
+Explored: {', '.join(discovered) if discovered else 'None yet'}
 [/GAME STATUS]"""
 
     # Inject as a system message that appears before the model processes
