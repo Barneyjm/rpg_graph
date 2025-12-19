@@ -173,6 +173,7 @@ def build_game_status(state: GameState) -> str:
             f"  - {item['name']} (wt:{item['weight']})" for item in inventory]
         inv_str = "\n".join(inv_items)
     else:
+        inv_str = "  (empty)"
 
     return f"""[GAME STATUS]
 Christmas Clock: {turns_remaining} turns until morning{time_warning}
@@ -196,6 +197,13 @@ async def inject_game_status(
 
     # Build status from current state (accessed via request.state)
     status_msg = build_game_status(request.state)
+
+    # Inject status as a system message at the start of the conversation
+    status_message = SystemMessage(content=status_msg)
+    request.messages = [status_message] + list(request.messages)
+
+    # Call the model with the injected status
+    result = await call_model(request)
     return result
 
 
