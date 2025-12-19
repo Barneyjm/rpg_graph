@@ -290,6 +290,10 @@ def discover_new_region(
     )
 
 
+# Maximum gift searches allowed per region
+MAX_SEARCHES_PER_REGION = 2
+
+
 @tool
 def check_for_gift(
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
@@ -297,6 +301,7 @@ def check_for_gift(
     """Search the current location for a Magic Gift!
     The player draws a card! A Magic Gift is found if a face card (Jack=11, Queen=12, King=13) is drawn.
     IMPORTANT: You must take an action in the region first before searching for a gift!
+    You can only search each region up to 2 times - then you must move on!
     Costs 1 turn on the Christmas Clock."""
     cards_response = request_cards(1, "Draw a card to search for a Magic Gift!")
 
@@ -336,6 +341,26 @@ def check_for_gift(
             }
         )
 
+    # Check region search limit
+    current_location = cards_response.get("current_location", "Unknown")
+    region_search_counts = cards_response.get("region_search_counts", {})
+    current_searches = region_search_counts.get(current_location, 0)
+
+    if current_searches >= MAX_SEARCHES_PER_REGION:
+        message = f"🔍 You've already searched **{current_location}** thoroughly ({MAX_SEARCHES_PER_REGION} times)!\nThe magic here has been fully explored. Time to discover a new region!\n💡 Use discover_new_region to find somewhere new to search."
+        return Command(
+            update={
+                "last_dice": None,
+                "last_card": None,
+                "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
+            }
+        )
+
+    # Increment search count for this region
+    updated_search_counts = dict(region_search_counts)
+    updated_search_counts[current_location] = current_searches + 1
+    searches_remaining = MAX_SEARCHES_PER_REGION - (current_searches + 1)
+
     card_strings = cards_response.get("cards", ["Ace of hearts"])
     card_str = card_strings[0] if card_strings else "Ace of hearts"
     card = parse_card(card_str)
@@ -344,21 +369,31 @@ def check_for_gift(
 
     if found:
         gift = random.choice(GIFT_NAMES)
-        message = f"🃏 Drew {card_str} - 🎁✨ **MAGIC GIFT FOUND!** ✨🎁\nYou discovered the {gift}! Christmas is one step closer to being saved!\n⏰ Turns remaining: {turns_after}"
+        # Mark region as fully searched (no more searches allowed after finding a gift)
+        updated_search_counts[current_location] = MAX_SEARCHES_PER_REGION
+        message = f"🃏 Drew {card_str} - 🎁✨ **MAGIC GIFT FOUND!** ✨🎁\nYou discovered the {gift}! Christmas is one step closer to being saved!\n⏰ Turns remaining: {turns_after}\n💫 This region's magic has been claimed - time to explore somewhere new!"
         return Command(
             update={
                 "gifts_found": 1,
                 "turns_remaining": turns_after,
+                "region_search_counts": updated_search_counts,
                 "last_dice": None,
                 "last_card": None,
                 "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]
             }
         )
 
-    message = f"🃏 Drew {card_str} - No Magic Gift here... but keep searching! 🔍\n⏰ Turns remaining: {turns_after}"
+    # Build message with searches remaining hint
+    if searches_remaining > 0:
+        search_hint = f"\n🔍 {searches_remaining} search(es) remaining in this region."
+    else:
+        search_hint = "\n🔍 No more searches here - time to explore a new region!"
+
+    message = f"🃏 Drew {card_str} - No Magic Gift here... but keep searching! 🔍\n⏰ Turns remaining: {turns_after}{search_hint}"
     return Command(
         update={
             "turns_remaining": turns_after,
+            "region_search_counts": updated_search_counts,
             "last_dice": None,
             "last_card": None,
             "messages": [{"role": "tool", "content": message, "tool_call_id": tool_call_id}]

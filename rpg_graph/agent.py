@@ -3,12 +3,94 @@ from typing import Callable
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware, ToolCallLimitMiddleware, wrap_model_call, ModelRequest, ModelResponse
 from langchain_fireworks import ChatFireworks
+from langchain_openai import ChatOpenAI
 
-from rpg_graph.utils.state import GameState
+from rpg_graph.utils.state import GameState, GAME_ITEMS
+from rpg_graph.utils.game_data import REGIONS, GIFT_NAMES
 from rpg_graph.utils.tools import tools
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def build_items_section() -> str:
+    """Build the satchel items section from GAME_ITEMS."""
+    light = []
+    medium = []
+    heavy = []
+
+    for item in GAME_ITEMS.values():
+        entry = f"- {item.name}: {item.effect}"
+        if item.weight == 1:
+            light.append(entry)
+        elif item.weight == 2:
+            medium.append(entry)
+        else:
+            heavy.append(entry)
+
+    return f"""=== SATCHEL ITEMS ===
+These are ALL the items that can be found. Do NOT invent new items:
+
+Light items (weight 1):
+{chr(10).join(light)}
+
+Medium items (weight 2):
+{chr(10).join(medium)}
+
+Heavy items (weight 3):
+{chr(10).join(heavy)}
+
+When an item modifier applies, mention it in your narration!"""
+
+
+def build_gifts_section() -> str:
+    """Build the magic gifts section from GIFT_NAMES."""
+    gifts_list = "\n".join(f"{i+1}. {name}" for i, name in enumerate(GIFT_NAMES))
+    return f"""=== THE 6 MAGIC GIFTS ===
+These are the ONLY Magic Gifts in the game. Use these exact names when a gift is found:
+{gifts_list}"""
+
+
+def build_regions_section() -> str:
+    """Build the regions section from REGIONS."""
+    region_names = sorted(set(REGIONS.values()))
+    # Format as comma-separated list, ~4 per line for readability
+    lines = []
+    for i in range(0, len(region_names), 4):
+        lines.append(", ".join(region_names[i:i+4]))
+    regions_text = ",\n".join(lines)
+
+    return f"""=== NORTH POLE REGIONS ===
+These are ALL the possible regions. The discover_new_region tool will randomly select one.
+Do NOT invent new region names - only use regions from this list:
+
+{regions_text}"""
+
+
+# Language configuration for internationalization
+LANGUAGE_NAMES = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "zh": "Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "ru": "Russian",
+    "uk": "Ukrainian",
+}
 
 # LLM setup
-llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
+# llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
+llm = ChatOpenAI(
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1",
+    model="mistralai/mistral-small-creative",
+)
 
 # Summarization middleware to manage context length
 GAME_SUMMARY_PROMPT = """You are summarizing the conversation history for Santa's Workshop Adventure, a cozy holiday RPG.
@@ -38,8 +120,8 @@ summarization_middleware = SummarizationMiddleware(
     summary_prompt=GAME_SUMMARY_PROMPT,
 )
 
-# Static system prompt
-system_prompt = """You are the GameMaster for Santa's Workshop Adventure, a cozy holiday RPG set at the magical North Pole! 🎅
+# System prompt with dynamic game data
+system_prompt = f"""You are the GameMaster for Santa's Workshop Adventure, a cozy holiday RPG set at the magical North Pole! 🎅
 
 === THE QUEST: FIND THE 6 MAGIC GIFTS! ===
 The Player's MAIN GOAL is to find all 6 Magic Gifts before time runs out!
@@ -115,12 +197,7 @@ These are resolved using the take_action tool (costs 1 turn each):
 - Chase Snow Gremlins: Catch those mischievous troublemakers! SPARKLE = they drop something shiny
 - Sneak Past Danger: High risk/reward - SPARKLE = no sleepiness, SNOWDRIFT = +2 sleepiness from fleeing!
 
-=== ITEM MODIFIERS ===
-Some items in the satchel affect dice rolls:
-- Candy Cane: +1 to next roll (consumed when used - happens automatically!)
-- Gingerbread Friend: +1 to sneak_past actions (passive, not consumed)
-
-When an item modifier applies, mention it in your narration!
+{build_items_section()}
 
 Special actions with dedicated tools:
 - Explore a Location: Use discover_new_region (costs 1 turn). Always generate_scene_image after.
@@ -151,6 +228,10 @@ Generate an image for:
 
 Call generate_scene_image BEFORE your final narration so the image appears with your story.
 
+{build_gifts_section()}
+
+{build_regions_section()}
+
 === IMPORTANT ===
 A [GAME STATUS] message will be injected showing current state. Use this to track time remaining, sleepiness, gifts, location, and inventory. Don't reveal the raw status to the player."""
 
@@ -166,6 +247,11 @@ def build_game_status(state: GameState) -> str:
     capacity = state.get("inventory_capacity", 8)
     region_action_taken = state.get("region_action_taken", False)
     turns_remaining = state.get("turns_remaining", 24)
+    region_search_counts = state.get("region_search_counts", {})
+
+    # Calculate searches remaining in current region
+    current_searches = region_search_counts.get(current_location, 0) if current_location else 0
+    searches_remaining = max(0, 2 - current_searches)
 
     # Calculate inventory weight
     current_weight = sum(item.get("weight", 0) for item in inventory)
@@ -173,7 +259,14 @@ def build_game_status(state: GameState) -> str:
     sleepy_warning = " 🍪 TIME FOR HOT COCOA!" if sleepiness >= 4 else ""
     victory_note = " 🎄 CHRISTMAS IS ALMOST SAVED!" if gifts >= total_gifts - 1 else ""
     satchel_warning = " ⚠️ SATCHEL NEARLY FULL!" if current_weight >= capacity - 1 else ""
-    gift_search_status = "✅ Can search for gift - SUGGEST THIS!" if region_action_taken else "❌ Must take action first"
+
+    # Gift search status with remaining searches
+    if not region_action_taken:
+        gift_search_status = "❌ Must take action first"
+    elif searches_remaining == 0:
+        gift_search_status = "🚫 No searches left here - move to new region!"
+    else:
+        gift_search_status = f"✅ Can search ({searches_remaining} remaining) - SUGGEST THIS!"
 
     # Gift progress reminder
     gifts_remaining = total_gifts - gifts
@@ -213,22 +306,49 @@ Satchel: {current_weight}/{capacity} weight{satchel_warning}
 [/GAME STATUS]"""
 
 
+def get_language_instruction(language_code: str) -> str:
+    """Build language instruction for the model based on language code."""
+    if language_code == "en":
+        return ""  # No instruction needed for English (default)
+
+    language_name = LANGUAGE_NAMES.get(language_code, language_code)
+    return f"""[LANGUAGE INSTRUCTION]
+You MUST respond entirely in {language_name}.
+All narration, dialogue, choices, and game text should be in {language_name}.
+Keep game mechanics terms (like SPARKLE, FLURRY, SNOWDRIFT) in English for consistency, but translate everything else.
+[/LANGUAGE INSTRUCTION]"""
+
+
 @wrap_model_call
 async def inject_game_status(
     request: ModelRequest,
     call_model: Callable[[ModelRequest], ModelResponse],
 ) -> ModelResponse:
-    """Wrap model call to inject game status without persisting to state."""
+    """Wrap model call to inject game status and language instruction without persisting to state."""
     from langchain_core.messages import SystemMessage
 
     # Build status from current state (accessed via request.state)
     status_msg = build_game_status(request.state)
 
-    # Inject status as a system message at the start of the conversation
-    status_message = SystemMessage(content=status_msg)
+    # Get language from config context (defaults to English)
+    language = "en"
+    if hasattr(request, 'config') and request.config:
+        language = request.config.get("configurable", {}).get("context", {}).get("language", "en")
+
+    # Build language instruction if not English
+    language_instruction = get_language_instruction(language)
+
+    # Combine status and language instruction
+    if language_instruction:
+        combined_msg = f"{status_msg}\n\n{language_instruction}"
+    else:
+        combined_msg = status_msg
+
+    # Inject as a system message at the start of the conversation
+    status_message = SystemMessage(content=combined_msg)
     request.messages = [status_message] + list(request.messages)
 
-    # Call the model with the injected status
+    # Call the model with the injected status and language instruction
     result = await call_model(request)
     return result
 

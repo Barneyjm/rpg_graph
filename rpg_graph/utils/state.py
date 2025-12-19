@@ -1,6 +1,6 @@
 import base64
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 from operator import add
 from dataclasses import dataclass
 
@@ -118,3 +118,5 @@ class GameState(MessagesState):
     region_action_taken: bool = False
     # Christmas Clock - turns remaining until Christmas morning
     turns_remaining: int = 24
+    # Track gift searches per region (max 2 per region to prevent cheese)
+    region_search_counts: Dict[str, int] = {}

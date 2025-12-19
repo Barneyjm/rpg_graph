@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "langchain",
     "langchain-fireworks",
+    "langchain-openai>=1.1.6",
     "langgraph",
     "python-dotenv",
     "requests>=2.32.5",
