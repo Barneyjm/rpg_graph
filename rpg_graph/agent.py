@@ -85,12 +85,12 @@ LANGUAGE_NAMES = {
 }
 
 # LLM setup
-# llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
-llm = ChatOpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
-    model="mistralai/mistral-small-creative",
-)
+llm = ChatFireworks(model="accounts/fireworks/models/gpt-oss-20b")
+# llm = ChatOpenAI(
+#     api_key=os.getenv("OPENROUTER_API_KEY"),
+#     base_url="https://openrouter.ai/api/v1",
+#     model="mistralai/mistral-small-creative",
+# )
 
 # Summarization middleware to manage context length
 GAME_SUMMARY_PROMPT = """You are summarizing the conversation history for Santa's Workshop Adventure, a cozy holiday RPG.
