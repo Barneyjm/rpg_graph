@@ -37,24 +37,24 @@ class InventoryItem:
 # Predefined items that can be found in the game
 GAME_ITEMS = {
     # Light items (weight 1)
-    "candy_cane": InventoryItem("Candy Cane", 1, "A sweet peppermint treat", "+1 to next roll"),
-    "jingle_bell": InventoryItem("Jingle Bell", 1, "A tiny golden bell that tinkles merrily"),
-    "snowflake_cookie": InventoryItem("Snowflake Cookie", 1, "A delicious frosted cookie", "Recover 1 sleepiness"),
-    "holly_sprig": InventoryItem("Holly Sprig", 1, "Bright red berries and green leaves"),
-    "ribbon": InventoryItem("Festive Ribbon", 1, "A sparkly red and gold ribbon"),
+    "candy_cane": InventoryItem("Candy Cane", 1, "A sweet peppermint treat that fills you with holiday cheer", "+1 to next roll"),
+    "jingle_bell": InventoryItem("Jingle Bell", 1, "A tiny golden bell that tinkles merrily when you walk", "+1 to chase_gremlins"),
+    "snowflake_cookie": InventoryItem("Snowflake Cookie", 1, "A delicious frosted cookie shaped like a perfect snowflake", "Recover 1 sleepiness"),
+    "holly_sprig": InventoryItem("Holly Sprig", 1, "Bright red berries and glossy green leaves, a symbol of good luck", "+1 to brave_blizzard"),
+    "ribbon": InventoryItem("Festive Ribbon", 1, "A sparkly red and gold ribbon that shimmers in the light", "+1 to search_treats"),
 
     # Medium items (weight 2)
-    "hot_cocoa_thermos": InventoryItem("Hot Cocoa Thermos", 2, "Stays warm forever!", "Full sleepiness recovery"),
-    "snow_globe": InventoryItem("Mini Snow Globe", 2, "Shows glimpses of other locations", "Reroll location dice"),
-    "gingerbread_man": InventoryItem("Gingerbread Friend", 2, "A living cookie companion!", "+1 to sneak actions"),
-    "elf_lantern": InventoryItem("Elf Lantern", 2, "Glows with warm magical light", "Reveal hidden items"),
-    "toy_hammer": InventoryItem("Toy Hammer", 2, "A tiny but mighty tool"),
+    "hot_cocoa_thermos": InventoryItem("Hot Cocoa Thermos", 2, "A magical thermos that keeps cocoa perfectly warm forever", "Full sleepiness recovery"),
+    "snow_globe": InventoryItem("Mini Snow Globe", 2, "Swirling snow reveals glimpses of distant places when you shake it", "Ask yes/no questions"),
+    "gingerbread_man": InventoryItem("Gingerbread Friend", 2, "A living cookie companion with frosting buttons and a sweet smile", "+1 to sneak_past"),
+    "elf_lantern": InventoryItem("Elf Lantern", 2, "A brass lantern that glows with warm, magical light from the Northern Lights", "+1 to explore_location"),
+    "toy_hammer": InventoryItem("Toy Hammer", 2, "A tiny but mighty tool, perfect for elf-sized repairs", "+2 to holiday_memory"),
 
     # Heavy items (weight 3)
-    "sack_of_toys": InventoryItem("Sack of Toys", 3, "A miniature version of Santa's bag"),
-    "frozen_turkey": InventoryItem("Frozen Turkey", 3, "Why are you carrying this?"),
-    "music_box": InventoryItem("Music Box", 3, "Plays 'Jingle Bells' when opened", "Distract Snow Gremlins"),
-    "giant_candy_cane": InventoryItem("Giant Candy Cane", 3, "As tall as an elf!", "Can be used as a pole"),
+    "sack_of_toys": InventoryItem("Sack of Toys", 3, "A miniature version of Santa's bag, bigger on the inside", "+2 inventory capacity"),
+    "frozen_turkey": InventoryItem("Frozen Turkey", 3, "A rock-solid frozen turkey. Why are you carrying this?", "-1 to sneak_past"),
+    "music_box": InventoryItem("Music Box", 3, "An ornate wooden box that plays 'Jingle Bells' when opened", "+2 to chase_gremlins"),
+    "giant_candy_cane": InventoryItem("Giant Candy Cane", 3, "A candy cane as tall as an elf, striped red and white", "+1 to brave_blizzard"),
 }
 
 
@@ -77,19 +77,19 @@ welcome_message = AIMessage(content="""🎄 **Welcome to Santa's Workshop Advent
 
 *~Jingle bells play softly in the distance~*
 
-You're a cheerful Elf Helper at the North Pole, and you've just woken up from a cozy nap by the fireplace. But wait... something's wrong!
+You're a brave little **Gingerbread Scout** - fresh from Mrs. Claus's cooling rack, with frosting still warm and gumdrop buttons gleaming! You hop down onto the kitchen counter and gasp... something's wrong!
 
 A magical blizzard has scattered **Six Magic Gifts** across the North Pole—and without them, Christmas morning won't be complete! To make matters worse, mischievous **Snow Gremlins** are causing chaos everywhere!
 
-Santa is counting on you, little elf! ❄️
+Santa is counting on you, little cookie! 🍪
 
-Your pointy ears tingle with determination. The smell of gingerbread fills the air. Somewhere nearby, a reindeer bells jingle encouragingly.
+You may be small and made of gingerbread, but your frosted heart is full of courage. You grab a tiny canvas satchel, wrap your licorice scarf tight, and head for the door.
 
 ✨ *The adventure begins... What would you like to do?* ✨
 
 ---
 🎁 *Find all 6 Magic Gifts to save Christmas!*
-🍪 *Watch your sleepiness—grab hot cocoa when you need it!*
+☕ *Watch your sleepiness—grab hot cocoa when you need it!*
 ⛄ *Share your adventure with friends!*""")
 
 
